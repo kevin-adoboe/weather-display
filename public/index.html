@@ -1,0 +1,408 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="description" content="Weather Display App - mock weather data demo" />
+    <title>Weather Display App</title>
+    <style>
+      :root {
+        --bg-start: #0ea5e9; /* sky-400 */
+        --bg-mid: #2563eb;   /* indigo-600 */
+        --bg-end: #0ea5e9;
+        --card-bg: rgba(255, 255, 255, 0.12);
+        --card-border: rgba(255, 255, 255, 0.18);
+        --text-primary: #ffffff;
+        --text-muted: rgba(255, 255, 255, 0.8);
+        --accent: #60a5fa;    /* blue-400 */
+        --accent-strong: #93c5fd; /* blue-300 */
+        --danger: #fecaca;   /* red-200 */
+        --shadow: 0 10px 25px rgba(0, 0, 0, 0.25);
+        --radius: 16px;
+        --transition: 200ms ease;
+      }
+
+      /* Reset + base */
+      * { box-sizing: border-box; }
+      html, body { height: 100%; }
+      body {
+        margin: 0;
+        font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, "Apple Color Emoji", "Segoe UI Emoji";
+        color: var(--text-primary);
+        background: linear-gradient(135deg, var(--bg-start), var(--bg-mid), var(--bg-end));
+        background-size: 200% 200%;
+        animation: bg-shift 12s ease-in-out infinite;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        padding: 24px;
+      }
+
+      @keyframes bg-shift {
+        0% { background-position: 0% 50%; }
+        50% { background-position: 100% 50%; }
+        100% { background-position: 0% 50%; }
+      }
+
+      .container {
+        width: 100%;
+        max-width: 920px;
+        margin: 0 auto;
+      }
+
+      .app-card {
+        background: var(--card-bg);
+        border: 1px solid var(--card-border);
+        box-shadow: var(--shadow);
+        border-radius: var(--radius);
+        backdrop-filter: blur(10px);
+        -webkit-backdrop-filter: blur(10px);
+        padding: 20px;
+      }
+
+      header {
+        text-align: center;
+        margin-bottom: 18px;
+      }
+
+      .title {
+        margin: 0 0 6px 0;
+        font-size: clamp(1.5rem, 4vw, 2.25rem);
+        font-weight: 800;
+        letter-spacing: 0.3px;
+      }
+
+      .subtitle {
+        margin: 0;
+        color: var(--text-muted);
+        font-size: clamp(0.9rem, 2.6vw, 1.05rem);
+      }
+
+      .controls {
+        display: grid;
+        gap: 12px;
+        grid-template-columns: 1fr;
+        margin-top: 16px;
+      }
+
+      .search {
+        display: grid;
+        grid-template-columns: 1fr auto;
+        gap: 10px;
+      }
+
+      .input {
+        appearance: none;
+        width: 100%;
+        padding: 12px 14px;
+        border-radius: 12px;
+        border: 1px solid var(--card-border);
+        background: rgba(255,255,255,0.14);
+        color: #fff;
+        outline: none;
+        transition: box-shadow var(--transition), transform var(--transition), background var(--transition);
+      }
+
+      .input::placeholder { color: rgba(255,255,255,0.7); }
+      .input:focus {
+        box-shadow: 0 0 0 3px rgba(147, 197, 253, 0.35);
+        transform: translateY(-1px);
+        background: rgba(255,255,255,0.18);
+      }
+
+      .btn {
+        appearance: none;
+        border: none;
+        border-radius: 12px;
+        padding: 12px 16px;
+        font-weight: 700;
+        letter-spacing: 0.3px;
+        color: #0b1220;
+        background: #e2f2ff;
+        cursor: pointer;
+        transition: transform var(--transition), box-shadow var(--transition), background var(--transition), color var(--transition);
+        user-select: none;
+      }
+
+      .btn:hover { transform: translateY(-1px); box-shadow: 0 8px 18px rgba(0,0,0,0.2); }
+      .btn:active { transform: translateY(0); box-shadow: none; }
+      .btn:disabled { opacity: 0.6; cursor: not-allowed; transform: none; box-shadow: none; }
+
+      .btn-primary {
+        background: linear-gradient(135deg, #e0f2fe, #bfdbfe);
+      }
+
+      .quick-buttons {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+        gap: 10px;
+      }
+
+      .quick-buttons .btn {
+        background: rgba(255,255,255,0.85);
+        color: #0b1220;
+      }
+      .quick-buttons .btn:hover { background: #fff; }
+
+      .status-row {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        margin-top: 8px;
+        gap: 12px;
+      }
+
+      .loading {
+        display: none;
+        align-items: center;
+        gap: 10px;
+        color: var(--text-muted);
+      }
+      .loading.show { display: inline-flex; }
+
+      .spinner {
+        width: 18px; height: 18px;
+        border: 3px solid rgba(255,255,255,0.35);
+        border-top-color: #fff;
+        border-radius: 50%;
+        animation: spin 800ms linear infinite;
+      }
+      @keyframes spin { to { transform: rotate(360deg); } }
+
+      .error {
+        display: none;
+        margin-top: 8px;
+        color: var(--danger);
+        font-weight: 600;
+      }
+      .error.show { display: block; }
+
+      .results {
+        margin-top: 16px;
+        display: grid;
+        grid-template-columns: 1fr;
+        gap: 14px;
+      }
+
+      .weather-card {
+        background: rgba(255, 255, 255, 0.12);
+        border: 1px solid var(--card-border);
+        border-radius: var(--radius);
+        box-shadow: var(--shadow);
+        padding: 18px;
+        transform: translateY(6px);
+        opacity: 0;
+        animation: fade-in 420ms ease forwards;
+      }
+
+      @keyframes fade-in {
+        to { transform: translateY(0); opacity: 1; }
+      }
+
+      .weather-city {
+        margin: 0 0 6px 0;
+        font-size: clamp(1.25rem, 4vw, 1.75rem);
+        font-weight: 800;
+      }
+
+      .temp-row {
+        display: flex;
+        align-items: baseline;
+        gap: 12px;
+        flex-wrap: wrap;
+      }
+
+      .temperature {
+        font-size: clamp(2.5rem, 10vw, 4rem);
+        font-weight: 900;
+        background: linear-gradient(135deg, #ffffff, var(--accent-strong));
+        -webkit-background-clip: text;
+        background-clip: text;
+        color: transparent;
+        line-height: 1;
+      }
+
+      .description { text-transform: capitalize; color: var(--text-muted); font-weight: 700; }
+
+      .details {
+        display: grid;
+        grid-template-columns: repeat(2, 1fr);
+        gap: 12px;
+        margin-top: 12px;
+      }
+
+      .detail {
+        background: rgba(255, 255, 255, 0.10);
+        border: 1px solid var(--card-border);
+        border-radius: 12px;
+        padding: 12px;
+        text-align: center;
+      }
+
+      .detail .label { display: block; color: var(--text-muted); font-size: 0.9rem; }
+      .detail .value { display: block; font-size: 1.2rem; font-weight: 800; margin-top: 6px; }
+
+      .timestamp { margin-top: 10px; color: var(--text-muted); font-size: 0.9rem; }
+
+      @media (min-width: 700px) {
+        .controls { grid-template-columns: 1.2fr 1fr; align-items: start; }
+      }
+    </style>
+  </head>
+  <body>
+    <main class="container">
+      <section class="app-card" aria-label="Weather Display App">
+        <header>
+          <h1 class="title">Weather Display App</h1>
+          <p class="subtitle">Get quick weather snapshots for any city. No API key required.</p>
+        </header>
+
+        <div class="controls">
+          <div class="search" role="search">
+            <input id="cityInput" class="input" type="text" inputmode="search" placeholder="Enter a city (e.g., London)" aria-label="City name" />
+            <button id="searchBtn" class="btn btn-primary" aria-label="Search weather">Search</button>
+          </div>
+
+          <div class="quick-buttons" aria-label="Quick city shortcuts">
+            <button class="btn" data-city="London">London</button>
+            <button class="btn" data-city="New York">New York</button>
+            <button class="btn" data-city="Tokyo">Tokyo</button>
+            <button class="btn" data-city="Sydney">Sydney</button>
+            <button class="btn" data-city="Paris">Paris</button>
+          </div>
+        </div>
+
+        <div class="status-row">
+          <div id="loading" class="loading" aria-live="polite" aria-atomic="true">
+            <span class="spinner" aria-hidden="true"></span>
+            <span>Loading...</span>
+          </div>
+          <div id="error" class="error" role="alert"></div>
+        </div>
+
+        <div id="results" class="results" aria-live="polite" aria-atomic="true"></div>
+      </section>
+    </main>
+
+    <script>
+      const $ = (sel) => document.querySelector(sel);
+      const cityInput = $('#cityInput');
+      const searchBtn = $('#searchBtn');
+      const loadingEl = $('#loading');
+      const errorEl = $('#error');
+      const resultsEl = $('#results');
+      const quickButtons = document.querySelectorAll('.quick-buttons .btn');
+
+      function setLoading(isLoading) {
+        loadingEl.classList.toggle('show', isLoading);
+        searchBtn.disabled = isLoading;
+        cityInput.disabled = isLoading;
+        quickButtons.forEach((b) => (b.disabled = isLoading));
+      }
+
+      function clearResults() {
+        resultsEl.innerHTML = '';
+      }
+
+      function showError(message) {
+        errorEl.textContent = message || 'Something went wrong.';
+        errorEl.classList.add('show');
+      }
+
+      function clearError() {
+        errorEl.textContent = '';
+        errorEl.classList.remove('show');
+      }
+
+      function capitalized(str) {
+        if (!str) return '';
+        return String(str).charAt(0).toUpperCase() + String(str).slice(1);
+      }
+
+      function formatNumber(value, digits = 0) {
+        const num = Number(value);
+        return Number.isFinite(num) ? num.toFixed(digits) : '-';
+      }
+
+      function showWeather(data) {
+        clearError();
+
+        const card = document.createElement('article');
+        card.className = 'weather-card';
+
+        const city = data.city || 'Unknown';
+        const temperature = formatNumber(data.temperature, 1);
+        const description = capitalized(data.description || '');
+        const humidity = formatNumber(data.humidity, 0);
+        const windSpeed = formatNumber(data.windSpeed, 1);
+        const timestamp = data.timestamp ? new Date(data.timestamp).toLocaleString() : new Date().toLocaleString();
+
+        card.innerHTML = `
+          <h2 class="weather-city">${city}</h2>
+          <div class="temp-row">
+            <div class="temperature">${temperature}°C</div>
+            <div class="description">${description}</div>
+          </div>
+          <div class="details">
+            <div class="detail">
+              <span class="label">Humidity</span>
+              <span class="value">${humidity}%</span>
+            </div>
+            <div class="detail">
+              <span class="label">Wind Speed</span>
+              <span class="value">${windSpeed} m/s</span>
+            </div>
+          </div>
+          <div class="timestamp">Last updated: ${timestamp}</div>
+        `;
+
+        resultsEl.prepend(card);
+      }
+
+      async function searchWeather() {
+        const city = (cityInput.value || '').trim();
+        if (!city) {
+          showError('Please enter a city.');
+          return;
+        }
+
+        clearError();
+        setLoading(true);
+        try {
+          const res = await fetch(`/api/weather/${encodeURIComponent(city)}`);
+          if (!res.ok) {
+            let message = `Request failed (${res.status})`;
+            try {
+              const payload = await res.json();
+              if (payload && payload.message) message = payload.message;
+            } catch (_) {}
+            throw new Error(message);
+          }
+          const data = await res.json();
+          clearResults();
+          showWeather(data);
+        } catch (err) {
+          showError(err && err.message ? err.message : 'Unable to fetch weather.');
+        } finally {
+          setLoading(false);
+        }
+      }
+
+      function quickSearch(city) {
+        cityInput.value = city;
+        searchWeather();
+      }
+
+      // Event bindings
+      searchBtn.addEventListener('click', searchWeather);
+      cityInput.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') {
+          e.preventDefault();
+          searchWeather();
+        }
+      });
+      quickButtons.forEach((btn) => btn.addEventListener('click', () => quickSearch(btn.dataset.city)));
+    </script>
+  </body>
+  </html>
+
