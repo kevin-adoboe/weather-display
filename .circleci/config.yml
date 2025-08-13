@@ -1,0 +1,104 @@
+version: 2.1
+
+orbs:
+  node: circleci/node@5.1.0
+
+jobs:
+  test:
+    docker:
+      - image: cimg/node:18.17.0
+    steps:
+      - checkout
+      - node/install-packages:
+          pkg-manager: npm
+          cache-version: v1
+          override-ci-command: npm ci
+      - run:
+          name: Lint
+          command: npm run lint
+      - run:
+          name: Test
+          command: npm test -- --ci
+      - run:
+          name: Build
+          command: npm run build
+      - run:
+          name: Health check
+          environment:
+            NODE_ENV: production
+            PORT: 3000
+          command: |
+            nohup node server.js >/dev/null 2>&1 &
+            echo $! > server.pid
+            for i in $(seq 1 40); do
+              if curl -sf http://127.0.0.1:3000/health >/dev/null; then
+                echo "Health endpoint is up"
+                break
+              fi
+              sleep 0.5
+            done
+            echo "Health response:"
+            curl -sf http://127.0.0.1:3000/health || true
+            kill $(cat server.pid) || true
+
+  build:
+    docker:
+      - image: cimg/node:20.10.0
+    steps:
+      - checkout
+      - node/install-packages:
+          pkg-manager: npm
+          cache-version: v1
+          override-ci-command: npm ci
+      - run:
+          name: Build
+          command: npm run build
+      - run:
+          name: Create artifact package
+          command: |
+            mkdir -p artifact
+            cp -R public artifact/public
+            cp server.js package.json package-lock.json jest.config.js .eslintrc.js artifact/ || true
+            mkdir -p artifact/.github/workflows && cp -R .github/workflows artifact/.github/ || true
+            tar -czf weather-display-app-$(git rev-parse --short HEAD).tgz -C artifact .
+      - persist_to_workspace:
+          root: .
+          paths:
+            - weather-display-app-*.tgz
+      - store_artifacts:
+          path: weather-display-app-$(git rev-parse --short HEAD).tgz
+          destination: weather-display-app.tgz
+
+  deploy:
+    docker:
+      - image: cimg/node:20.10.0
+    steps:
+      - attach_workspace:
+          at: ~/workspace
+      - run:
+          name: Verify artifact
+          command: |
+            ls -lah ~/workspace
+            ARTIFACT=$(ls ~/workspace/weather-display-app-*.tgz | head -n1)
+            echo "Using artifact: $ARTIFACT"
+            tar -tzf "$ARTIFACT" | head -n 50
+      - store_artifacts:
+          path: ~/workspace
+          destination: deploy
+
+workflows:
+  test-build-deploy:
+    jobs:
+      - test
+      - build:
+          requires:
+            - test
+          filters:
+            branches:
+              only: main
+      - deploy:
+          requires:
+            - build
+          filters:
+            branches:
+              only: main
