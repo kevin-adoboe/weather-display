@@ -1,4 +1,4 @@
-name: CI
+name: CI/CD Pipeline
 
 on:
   push:
@@ -8,73 +8,91 @@ on:
 permissions:
   contents: read
 
+# Ensure only one workflow per ref runs at a time
 concurrency:
-  group: ci-${{ github.ref }}
+  group: cicd-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
   test:
-    name: Test (Node ${{ matrix.node-version }})
+    name: Tests (Node ${{ matrix.node }})
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
       matrix:
-        node-version: [16.x, 18.x, 20.x]
+        node: [16.x, 18.x, 20.x]
     steps:
-      - name: Checkout repository
+      # Checkout repository
+      - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Setup Node.js ${{ matrix.node-version }}
+      # Setup Node.js with dependency caching
+      - name: Setup Node.js ${{ matrix.node }}
         uses: actions/setup-node@v4
         with:
-          node-version: ${{ matrix.node-version }}
-          cache: 'npm'
+          node-version: ${{ matrix.node }}
+          cache: npm
 
+      # Install clean dependencies
       - name: Install dependencies
         run: npm ci
 
+      # Lint step
       - name: Lint
         run: npm run lint
 
+      # Run tests in CI mode
       - name: Test
         run: npm test -- --ci
 
+      # Build step (ensures build passes in all supported Node versions)
       - name: Build
         run: npm run build
 
+      # Health check by starting server and probing /health
       - name: Health check
         env:
           NODE_ENV: production
           PORT: 3000
+        shell: bash
         run: |
+          set -euo pipefail
+          # Start server in background and capture PID
           nohup node server.js >/dev/null 2>&1 &
           SERVER_PID=$!
-          # wait for server
+          cleanup() { kill $SERVER_PID >/dev/null 2>&1 || true; }
+          trap cleanup EXIT
+
+          # Wait up to 20 seconds for health endpoint to respond
           for i in {1..40}; do
-            if curl -sf http://127.0.0.1:3000/health >/dev/null; then
-              echo "Health endpoint is up"
+            if curl -sSf http://127.0.0.1:3000/health >/dev/null; then
+              echo "Health endpoint responded"
               break
             fi
             sleep 0.5
+            if [[ $i -eq 40 ]]; then
+              echo "Health endpoint did not respond in time" >&2
+              exit 1
+            fi
           done
-          echo "Health response:"
-          curl -sf http://127.0.0.1:3000/health | jq '.' || curl -sf http://127.0.0.1:3000/health
-          kill $SERVER_PID || true
+
+          # Print health payload for visibility
+          curl -sS http://127.0.0.1:3000/health || true
 
   build:
-    name: Build and Archive
+    name: Build & Artifact
     needs: test
     if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout repository
+      - name: Checkout
         uses: actions/checkout@v4
 
       - name: Setup Node.js 20.x
         uses: actions/setup-node@v4
         with:
           node-version: 20.x
-          cache: 'npm'
+          cache: npm
 
       - name: Install dependencies
         run: npm ci
@@ -83,22 +101,23 @@ jobs:
         run: npm run build
 
       - name: Create artifact package
+        shell: bash
         run: |
+          set -euo pipefail
           mkdir -p artifact
           cp -R public artifact/public
           cp server.js package.json package-lock.json jest.config.js .eslintrc.js artifact/ || true
-          # include workflow for reference
           mkdir -p artifact/.github/workflows && cp .github/workflows/ci.yml artifact/.github/workflows/ci.yml || true
-          tar -czf weather-display-app-${{ github.sha }}.tgz -C artifact .
+          tar -czf weather-app-${{ github.sha }}.tgz -C artifact .
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
-          name: weather-display-app-${{ github.sha }}
-          path: weather-display-app-${{ github.sha }}.tgz
+          name: weather-app-${{ github.sha }}
+          path: weather-app-${{ github.sha }}.tgz
           if-no-files-found: error
 
-  deploy_prep:
+  deploy:
     name: Deploy Preparation
     needs: build
     if: github.ref == 'refs/heads/main'
@@ -107,23 +126,18 @@ jobs:
       - name: Download artifact
         uses: actions/download-artifact@v4
         with:
-          name: weather-display-app-${{ github.sha }}
+          name: weather-app-${{ github.sha }}
           path: ./deploy
 
       - name: Verify package
+        shell: bash
         run: |
+          set -euo pipefail
           ls -lah ./deploy
-          tar -tzf ./deploy/weather-display-app-${{ github.sha }}.tgz | head -n 50
+          tar -tzf ./deploy/weather-app-${{ github.sha }}.tgz | head -n 50
 
-      - name: Prepare deployment metadata
-        id: meta
+      - name: Deployment summary
         run: |
-          echo "commit_sha=${GITHUB_SHA}" >> $GITHUB_OUTPUT
-          echo "branch=${GITHUB_REF#refs/heads/}" >> $GITHUB_OUTPUT
-          echo "artifact=weather-display-app-${GITHUB_SHA}.tgz" >> $GITHUB_OUTPUT
-
-      - name: Summary
-        run: |
-          echo "Artifact: weather-display-app-${GITHUB_SHA}.tgz" >> $GITHUB_STEP_SUMMARY
+          echo "Artifact: weather-app-${GITHUB_SHA}.tgz" >> $GITHUB_STEP_SUMMARY
           echo "Commit: ${GITHUB_SHA}" >> $GITHUB_STEP_SUMMARY
           echo "Branch: ${GITHUB_REF#refs/heads/}" >> $GITHUB_STEP_SUMMARY
