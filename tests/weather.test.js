@@ -49,7 +49,7 @@ describe('Static Files Tests', () => {
   test('Served file should be the expected public/index.html', async () => {
     const res = await request(app).get('/');
     // Basic sanity check: the HTML should include the header title element
-    expect(res.text).toContain("<title>Weather</title>");
+    expect(res.text).toContain("<title>Kevin's Weather App</title>");
   });
 });
 
